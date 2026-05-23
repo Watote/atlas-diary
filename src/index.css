@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Playfair Display', serif;
+  --font-mono: 'DM Mono', monospace;
+  --color-stone-50: #faf9f7;
+  --color-stone-100: #f0ebe3;
+  --color-stone-200: #e2d9cc;
+  --color-stone-300: #c9bfb2;
+  --color-stone-400: #a89d8f;
+  --color-stone-500: #8a7f72;
+  --color-stone-600: #6b6058;
+  --color-stone-700: #504840;
+  --color-stone-800: #352f28;
+  --color-stone-900: #1a1612;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'DM Mono', monospace;
+  background: #faf9f7;
+  color: #1a1612;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Google Maps overrides */
+.gm-style {
+  font-family: 'DM Mono', monospace !important;
+}
+
+/* Hide Google Maps default UI chrome we don't need */
+.gm-style-cc, .gm-style a[href*='maps.google'] {
+  display: none !important;
+}
+
+.custom-pin-icon {
+  background: none !important;
+  border: none !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c9bfb2; border-radius: 2px; }
