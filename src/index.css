@@ -63,6 +63,16 @@ body {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Hide Google Maps controls on mobile */
+@media (max-width: 768px) {
+  .gm-bundled-control,
+  .gm-svpc,
+  .gmnoprint,
+  .gm-control-active {
+    display: none !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

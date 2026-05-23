@@ -74,6 +74,7 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
   const mapRef = useRef(null)
   const isFiltered = filteredIds !== null
   const [mapTypeId, setMapTypeId] = useState('roadmap')
+  const isMobile = window.innerWidth < 768
 
   // Pick style based on current map type:
   // roadmap → warm analog style
@@ -149,8 +150,8 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
         fullscreenControl: false,
         clickableIcons: false,
         gestureHandling: 'greedy',
-        zoomControl: true,
-        zoomControlOptions: {
+        zoomControl: !isMobile,
+        zoomControlOptions: isMobile ? {} : {
           position: 9,
         },
         minZoom: MAP_DEFAULT_MIN_ZOOM,
