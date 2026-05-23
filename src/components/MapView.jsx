@@ -140,12 +140,12 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
       zoom={MAP_DEFAULT_ZOOM}
       options={{
         styles: activeStyle,
-        disableDefaultUI: isMobile,   // kills ALL default controls on mobile in one shot
+        disableDefaultUI: isMobile,
         streetViewControl: false,
-        mapTypeControl: !isMobile,
-        mapTypeControlOptions: isMobile ? {} : {
+        mapTypeControl: true,
+        mapTypeControlOptions: {
           style: 1,
-          position: 1,
+          position: isMobile ? 6 : 1,  // 6 = BOTTOM_CENTER on mobile, 1 = TOP_LEFT on desktop
           mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'],
         },
         fullscreenControl: false,

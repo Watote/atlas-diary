@@ -63,13 +63,12 @@ body {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Hide any remaining Google Maps controls on mobile */
+/* Hide zoom/direction controls on mobile but keep map type toggle */
 @media (max-width: 768px) {
-  .gmnoprint,
   .gm-bundled-control,
   .gm-svpc,
-  .gm-control-active,
-  .gm-style-mtc {
+  .gm-control-active[title*="Zoom"],
+  .gm-control-active[title*="zoom"] {
     display: none !important;
   }
 }

@@ -204,14 +204,16 @@ function AtlasDiary({ userId, userEmail }) {
             onApiLoaded={handleApiLoaded}
           />
 
-          {/* Mobile: floating + button bottom-left */}
+          {/* Mobile: floating + button — bottom LEFT */}
           {isMobile && !pendingCoords && !activeEntry && !showStats && (
             <button
               onClick={() => { closeAll(); setPendingCoords({ lat: 20, lng: 10 }) }}
               style={{
                 position: 'absolute',
                 bottom: 'calc(16px + max(env(safe-area-inset-bottom), 34px))',
-                left: 16, zIndex: 40,
+                left: 16,
+                right: 'auto',
+                zIndex: 40,
                 width: 48, height: 48, borderRadius: '50%',
                 background: '#352f28', color: '#f5f0ea',
                 border: 'none', cursor: 'pointer',
@@ -226,7 +228,7 @@ function AtlasDiary({ userId, userEmail }) {
             </button>
           )}
 
-          {/* Mobile: floating panel bottom-right */}
+          {/* Mobile: floating panel — bottom RIGHT */}
           {isMobile && (
             <FloatingPanel {...sidebarProps} />
           )}
