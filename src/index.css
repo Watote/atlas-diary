@@ -23,11 +23,13 @@ body {
   background: #faf9f7;
   color: #1a1612;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
 #root {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -37,7 +39,6 @@ body {
   font-family: 'DM Mono', monospace !important;
 }
 
-/* Hide Google Maps default UI chrome we don't need */
 .gm-style-cc, .gm-style a[href*='maps.google'] {
   display: none !important;
 }
@@ -47,16 +48,19 @@ body {
   border: none !important;
 }
 
-/* Mobile touch improvements */
+/* Mobile touch + safe area */
 @media (max-width: 768px) {
   body {
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
-    /* Reserve space for home bar at bottom */
-    padding-bottom: env(safe-area-inset-bottom);
   }
   button { min-height: 36px; }
   .map-container { user-select: none; -webkit-user-select: none; }
+}
+
+/* Safe area CSS variable — used by floating buttons */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Scrollbar */

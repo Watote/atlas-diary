@@ -40,7 +40,7 @@ export default function FloatingPanel({
   const recentMoods = entries.slice(0, 5).map(e => getMoodFromEntry(e).color)
 
   return (
-    <div ref={panelRef} style={{ position: 'absolute', bottom: 'calc(24px + env(safe-area-inset-bottom))', right: 16, zIndex: 40 }}>
+    <div ref={panelRef} style={{ position: 'absolute', bottom: 'calc(16px + max(env(safe-area-inset-bottom), 34px))', right: 16, zIndex: 40 }}>
 
       {/* Expanded panel */}
       {expanded && (

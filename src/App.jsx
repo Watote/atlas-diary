@@ -184,8 +184,13 @@ function AtlasDiary({ userId, userEmail }) {
 
           {/* Map hint */}
           {!pendingCoords && !activeEntry && !showStats && (
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 text-xs text-stone-500 bg-stone-50/90 px-4 py-1.5 rounded-full border border-stone-200 pointer-events-none whitespace-nowrap"
-              style={{ fontFamily: 'DM Mono, monospace' }}>
+            <div
+              className="absolute left-1/2 -translate-x-1/2 z-10 text-xs text-stone-500 bg-stone-50/90 px-4 py-1.5 rounded-full border border-stone-200 pointer-events-none whitespace-nowrap"
+              style={{
+                fontFamily: 'DM Mono, monospace',
+                bottom: isMobile ? 'calc(90px + max(env(safe-area-inset-bottom), 34px))' : '1rem',
+              }}
+            >
               {isMobile ? 'tap the map to drop a memory' : 'click anywhere on the map · or search above'}
             </div>
           )}
@@ -205,7 +210,7 @@ function AtlasDiary({ userId, userEmail }) {
               onClick={() => { closeAll(); setPendingCoords({ lat: 20, lng: 10 }) }}
               style={{
                 position: 'absolute',
-                bottom: 'calc(24px + env(safe-area-inset-bottom))',
+                bottom: 'calc(16px + max(env(safe-area-inset-bottom), 34px))',
                 left: 16, zIndex: 40,
                 width: 48, height: 48, borderRadius: '50%',
                 background: '#352f28', color: '#f5f0ea',
