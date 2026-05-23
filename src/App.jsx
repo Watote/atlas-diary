@@ -204,7 +204,9 @@ function AtlasDiary({ userId, userEmail }) {
             <button
               onClick={() => { closeAll(); setPendingCoords({ lat: 20, lng: 10 }) }}
               style={{
-                position: 'absolute', bottom: 24, left: 16, zIndex: 40,
+                position: 'absolute',
+                bottom: 'calc(24px + env(safe-area-inset-bottom))',
+                left: 16, zIndex: 40,
                 width: 48, height: 48, borderRadius: '50%',
                 background: '#352f28', color: '#f5f0ea',
                 border: 'none', cursor: 'pointer',
