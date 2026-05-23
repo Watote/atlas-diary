@@ -47,6 +47,19 @@ body {
   border: none !important;
 }
 
+/* Mobile touch improvements */
+@media (max-width: 768px) {
+  body {
+    /* Prevent pull-to-refresh interfering with map */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Larger tap targets on mobile */
+  button { min-height: 36px; }
+  /* Prevent text selection while panning map */
+  .map-container { user-select: none; -webkit-user-select: none; }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
