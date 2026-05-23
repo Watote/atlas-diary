@@ -140,9 +140,10 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
       zoom={MAP_DEFAULT_ZOOM}
       options={{
         styles: activeStyle,
+        disableDefaultUI: isMobile,   // kills ALL default controls on mobile in one shot
         streetViewControl: false,
-        mapTypeControl: true,
-        mapTypeControlOptions: {
+        mapTypeControl: !isMobile,
+        mapTypeControlOptions: isMobile ? {} : {
           style: 1,
           position: 1,
           mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'],
@@ -151,9 +152,7 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
         clickableIcons: false,
         gestureHandling: 'greedy',
         zoomControl: !isMobile,
-        zoomControlOptions: isMobile ? {} : {
-          position: 9,
-        },
+        zoomControlOptions: isMobile ? {} : { position: 9 },
         minZoom: MAP_DEFAULT_MIN_ZOOM,
         restriction: {
           latLngBounds: { north: 83, south: -83, east: 179, west: -179 },

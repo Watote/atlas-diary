@@ -63,12 +63,13 @@ body {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Hide Google Maps controls on mobile */
+/* Hide any remaining Google Maps controls on mobile */
 @media (max-width: 768px) {
+  .gmnoprint,
   .gm-bundled-control,
   .gm-svpc,
-  .gmnoprint,
-  .gm-control-active {
+  .gm-control-active,
+  .gm-style-mtc {
     display: none !important;
   }
 }
