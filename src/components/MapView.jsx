@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
 import { GoogleMap, useJsApiLoader, OverlayView, Polyline } from '@react-google-maps/api'
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, MAP_STYLE, SATELLITE_LABEL_STYLE, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_DEFAULT_MIN_ZOOM } from '../constants/googleMaps.js'
+import { GOOGLE_MAP_ID, GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, MAP_STYLE, SATELLITE_LABEL_STYLE, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_DEFAULT_MIN_ZOOM } from '../constants/googleMaps.js'
 import { getMoodFromEntry } from '../utils/moods.js'
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
@@ -120,7 +120,7 @@ function JourneyLine({ path, progress }) {
   )
 }
 
-export default function MapView({ entries, filteredIds, onMapClick, onPinClick, onMapReady, onApiLoaded, coverUrls = {}, activeId = null, journeyPath = [], showJourney = false, journeyProgress = null }) {
+export default function MapView({ entries, filteredIds, onMapClick, onPinClick, onMapReady, onApiLoaded, coverUrls = {}, activeId = null, journeyPath = [], showJourney = false, journeyProgress = null, tripMode = false }) {
   const mapRef = useRef(null)
   const isFiltered = filteredIds !== null
   const [mapTypeId, setMapTypeId] = useState('roadmap')
@@ -189,7 +189,8 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
       center={MAP_DEFAULT_CENTER}
       zoom={MAP_DEFAULT_ZOOM}
       options={{
-        styles: activeStyle,
+        // With a Map ID (vector map) the style comes from Cloud-based map styling instead of `styles`
+        ...(GOOGLE_MAP_ID ? { mapId: GOOGLE_MAP_ID } : { styles: activeStyle }),
         disableDefaultUI: isMobile,
         streetViewControl: false,
         mapTypeControl: true,
@@ -203,8 +204,9 @@ export default function MapView({ entries, filteredIds, onMapClick, onPinClick, 
         gestureHandling: 'greedy',
         zoomControl: !isMobile,
         zoomControlOptions: isMobile ? {} : { position: 9 },
-        minZoom: MAP_DEFAULT_MIN_ZOOM,
-        restriction: {
+        // During a trip the camera must be free to glide anywhere (strict bounds would clamp it)
+        minZoom: tripMode ? 2 : MAP_DEFAULT_MIN_ZOOM,
+        restriction: tripMode ? null : {
           latLngBounds: { north: 83, south: -83, east: 179, west: -179 },
           strictBounds: true,
         },

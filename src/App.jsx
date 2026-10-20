@@ -234,7 +234,8 @@ function AtlasDiary({ userId, userEmail }) {
             activeId={tripOn ? tripStops[tripProgress ?? 0]?.id : activeEntryId}
             journeyPath={tripOn ? tripStops.map(e => ({ lat: e.lat, lng: e.lng })) : journeyPath}
             showJourney={showJourney}
-            journeyProgress={tripOn ? tripProgress : null}
+            journeyProgress={tripOn ? 0 : null}
+            tripMode={tripOn}
           />
 
           {/* Journey controls — top right of the map */}
@@ -257,6 +258,7 @@ function AtlasDiary({ userId, userEmail }) {
               stops={tripStops}
               mapRef={mapRef}
               coverUrls={coverUrls}
+              getPhotoUrls={getPhotoUrls}
               isMobile={isMobile}
               onProgress={setTripProgress}
               onOpen={(id) => setActiveEntryId(id)}

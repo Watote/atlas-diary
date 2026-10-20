@@ -1,4 +1,6 @@
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+// Optional: a vector Map ID (Google Cloud → Map Management) enables smooth zoom, tilt and rotation
+export const GOOGLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID || ''
 
 // Libraries we need loaded from the Google Maps JS SDK
 export const GOOGLE_MAPS_LIBRARIES = ['places', 'geometry']
