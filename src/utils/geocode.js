@@ -1,20 +1,34 @@
-import { GOOGLE_MAPS_API_KEY } from '../constants/googleMaps.js'
+// Reverse geocode a lat/lng with the Maps JavaScript API Geocoder.
+// (The REST geocode/elevation endpoints refuse browser keys with website restrictions,
+//  so everything goes through google.maps services, which accept them.)
+// Returns { nativeName, englishName, displayName, country, countryCode, formattedAddress }
 
-// Reverse geocode a lat/lng using Google Geocoding API.
-// Returns { nativeName, englishName, displayName, country, formattedAddress }
-// We make TWO requests: one without language (gets native script), one with language=en (gets English).
-export async function reverseGeocode(lat, lng) {
-  const base = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+// Main language per country, used to get the place name in its own script (e.g. 東京, กรุงเทพ)
+const LOCAL_LANG = {
+  JP: 'ja', CN: 'zh-CN', TW: 'zh-TW', HK: 'zh-HK', MO: 'zh-HK', KR: 'ko', TH: 'th', MM: 'my', LA: 'lo',
+  KH: 'km', VN: 'vi', RU: 'ru', UA: 'uk', BY: 'be', BG: 'bg', RS: 'sr', MK: 'mk', GR: 'el', IL: 'iw',
+  SA: 'ar', AE: 'ar', EG: 'ar', JO: 'ar', QA: 'ar', KW: 'ar', OM: 'ar', BH: 'ar', MA: 'ar', IR: 'fa',
+  IN: 'hi', NP: 'ne', LK: 'si', BD: 'bn', PK: 'ur', GE: 'ka', AM: 'hy', MN: 'mn', ET: 'am',
+}
 
+async function geocodeLatLng(lat, lng, language) {
+  const g = window.google?.maps
+  if (!g?.Geocoder) return { status: 'NOT_LOADED', results: [] }
   try {
-    const [nativeRes, englishRes] = await Promise.all([
-      fetch(`${base}&language=`),        // Native language of the place
-      fetch(`${base}&language=en`),      // English transliteration
-    ])
-    const [nativeData, englishData] = await Promise.all([
-      nativeRes.json(),
-      englishRes.json(),
-    ])
+    const res = await new g.Geocoder().geocode({ location: { lat, lng }, ...(language ? { language } : {}) })
+    return { status: res.results?.length ? 'OK' : 'ZERO_RESULTS', results: res.results || [] }
+  } catch {
+    return { status: 'ERROR', results: [] }
+  }
+}
+
+export async function reverseGeocode(lat, lng) {
+  try {
+    const englishData = await geocodeLatLng(lat, lng, 'en')
+    const cc = englishData.results
+      .flatMap(r => r.address_components || [])
+      .find(c => c.types.includes('country'))?.short_name
+    const nativeData = cc && LOCAL_LANG[cc] ? await geocodeLatLng(lat, lng, LOCAL_LANG[cc]) : englishData
 
     if (nativeData.status !== 'OK' && englishData.status !== 'OK') {
       return null
@@ -95,18 +109,14 @@ export async function reverseGeocode(lat, lng) {
   }
 }
 
-// Fetch elevation for a lat/lng using Google Elevation API
-// Returns elevation in meters, or null on failure
+// Elevation in metres via the Maps JavaScript API ElevationService, or null on failure
 export async function getElevation(lat, lng) {
   try {
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
-    )
-    const data = await res.json()
-    if (data.status === 'OK' && data.results?.[0]) {
-      return Math.round(data.results[0].elevation)
-    }
-    return null
+    const g = window.google?.maps
+    if (!g?.ElevationService) return null
+    const res = await new g.ElevationService().getElevationForLocations({ locations: [{ lat, lng }] })
+    const e = res.results?.[0]?.elevation
+    return Number.isFinite(e) ? Math.round(e) : null
   } catch {
     return null
   }
