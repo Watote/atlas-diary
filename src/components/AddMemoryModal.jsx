@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Upload, MapPin, Globe, Mountain, Pipette } from 'lucide-react'
 import { MOODS, CUSTOM_MOOD_IDX, WEATHER_OPTIONS, COMPANION_OPTIONS } from '../utils/moods.js'
 import { reverseGeocode, getElevation } from '../utils/geocode.js'
+import { preparePhotos, IMAGE_ACCEPT } from '../utils/photoImport.js'
 
 
 export default function AddMemoryModal({ coords, onSave, onClose, prefillLocation, prefillDate, prefillPhotos, sourceNote, onSkip }) {
@@ -54,14 +55,18 @@ export default function AddMemoryModal({ coords, onSave, onClose, prefillLocatio
     })
   }, [coords?.lat, coords?.lng, prefillLocation])
 
-  const handleFiles = useCallback((files) => {
-    const valid = Array.from(files)
-      .filter(f => f.type.startsWith('image/'))
-      .slice(0, MAX_PHOTOS - photos.length)
+  const [converting, setConverting] = useState(false)
+  const handleFiles = useCallback(async (files) => {
+    const room = MAX_PHOTOS - photos.length
+    const list = Array.from(files || []).slice(0, Math.max(0, room))
+    if (!list.length) return
+    setConverting(true)
+    const { files: valid } = await preparePhotos(list)   // HEIC → JPEG, big photos scaled down
+    setConverting(false)
     if (!valid.length) return
     const newPreviews = valid.map(f => URL.createObjectURL(f))
-    setPhotos(prev => [...prev, ...valid])
-    setPreviews(prev => [...prev, ...newPreviews])
+    setPhotos(prev => [...prev, ...valid].slice(0, MAX_PHOTOS))
+    setPreviews(prev => [...prev, ...newPreviews].slice(0, MAX_PHOTOS))
   }, [photos])
 
   const removePhoto = (idx) => {
@@ -321,8 +326,8 @@ export default function AddMemoryModal({ coords, onSave, onClose, prefillLocatio
                 className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragging ? 'border-stone-400 bg-stone-100' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'}`}
               >
                 <Upload size={18} className="mx-auto mb-1 text-stone-300" />
-                <p className="text-xs text-stone-400">drag photos or click to browse</p>
-                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => handleFiles(e.target.files)} />
+                <p className="text-xs text-stone-400">{converting ? 'preparing photos…' : 'drag photos or click to browse'}</p>
+                <input ref={fileInputRef} type="file" accept={IMAGE_ACCEPT} multiple className="hidden" onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
               </div>
             )}
             {previews.length > 0 && (
@@ -348,7 +353,7 @@ export default function AddMemoryModal({ coords, onSave, onClose, prefillLocatio
             style={{ fontFamily: 'DM Mono, monospace' }}>
             cancel
           </button>
-          <button onClick={handleSave} disabled={saving || geocoding}
+          <button onClick={handleSave} disabled={saving || geocoding || converting}
             className="flex-1 py-2 text-sm text-stone-50 rounded-lg transition-opacity disabled:opacity-50"
             style={{ background: activeMoodColor, fontFamily: 'DM Mono, monospace' }}>
             {saving ? 'saving...' : geocoding ? 'detecting...' : 'save memory'}

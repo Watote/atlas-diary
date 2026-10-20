@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, ChevronLeft, ChevronRight, Pencil, Check, Upload, Globe, Mountain, Star, Pipette } from 'lucide-react'
 import { getMoodFromEntry, MOODS, CUSTOM_MOOD_IDX, WEATHER_OPTIONS, COMPANION_OPTIONS } from '../utils/moods.js'
 import { MAX_PHOTOS } from '../constants/limits.js'
+import { preparePhotos, IMAGE_ACCEPT } from '../utils/photoImport.js'
 import StreetViewMini from './StreetViewMini.jsx'
 
 export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhotoUrls, uploadPhotos, siblings = [], onNavigate = () => {}, isMobile = false }) {
@@ -68,9 +69,14 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
     setNewPhotos([]); setNewPreviews([]); setEditing(false)
   }
 
-  const handleNewPhotos = (files) => {
+  const [converting, setConverting] = useState(false)
+  const handleNewPhotos = async (files) => {
     const total = entry.photoCount + newPhotos.length
-    const valid = Array.from(files).filter(f => f.type.startsWith('image/')).slice(0, MAX_PHOTOS - total)
+    const list = Array.from(files || []).slice(0, Math.max(0, MAX_PHOTOS - total))
+    if (!list.length) return
+    setConverting(true)
+    const { files: valid } = await preparePhotos(list)   // HEIC → JPEG, big photos scaled down
+    setConverting(false)
     if (!valid.length) return
     const previews = valid.map(f => URL.createObjectURL(f))
     setNewPhotos(p => [...p, ...valid]); setNewPreviews(p => [...p, ...previews])
@@ -305,7 +311,7 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
                     className="flex items-center gap-2 text-xs text-stone-500 border border-dashed border-stone-300 rounded-lg px-3 py-2 hover:bg-stone-100 w-full">
                     <Upload size={13} /> browse photos
                   </button>
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => handleNewPhotos(e.target.files)} />
+                  <input ref={fileInputRef} type="file" accept={IMAGE_ACCEPT} multiple className="hidden" onChange={e => { handleNewPhotos(e.target.files); e.target.value = '' }} />
                   {newPreviews.length > 0 && (
                     <div className="flex gap-2 mt-2">
                       {newPreviews.map((url, i) => (
@@ -322,10 +328,10 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
                 <button onClick={cancelEdit}
                   className="flex-1 py-2 text-xs text-stone-500 border border-stone-200 rounded-lg hover:bg-stone-100"
                   style={{ fontFamily: 'DM Mono, monospace' }}>cancel</button>
-                <button onClick={handleSaveEdit} disabled={saving}
+                <button onClick={handleSaveEdit} disabled={saving || converting}
                   className="flex-1 py-2 text-xs text-white rounded-lg flex items-center justify-center gap-1.5 disabled:opacity-50"
                   style={{ background: editMoodColor, fontFamily: 'DM Mono, monospace' }}>
-                  <Check size={13} />{saving ? 'saving...' : 'save changes'}
+                  <Check size={13} />{saving ? 'saving...' : converting ? 'preparing photos…' : 'save changes'}
                 </button>
               </div>
             </div>

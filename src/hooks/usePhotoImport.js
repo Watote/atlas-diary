@@ -55,7 +55,7 @@ export function usePhotoImport() {
       const bits = []
       if (groups.length) bits.push(`${plural(groups.length, 'place')} found from photo locations`)
       if (noGps.length) bits.push(`${plural(noGps.length, 'photo')} need a place`)
-      if (skipped) bits.push(`${skipped} skipped (HEIC/other — export as JPEG)`)
+      if (skipped) bits.push(`${skipped} skipped (not a photo the app can read)`)
       if (!bits.length) bits.push('no photos found in that drop')
       flash({ text: bits.join(' · '), error: !groups.length && !noGps.length })
     } catch (e) {

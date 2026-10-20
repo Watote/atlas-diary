@@ -5,9 +5,10 @@ import { MAX_PHOTOS } from '../constants/limits.js'
 
 const SAME_PLACE_KM = 1.5   // photos closer than this on the same day become one memory
 
-// HEIC can't be shown by most browsers, so it is skipped (export as JPEG, or iPhone converts on upload)
+// iPhone HEIC/HEIF photos can't be shown by most browsers, so they are converted to JPEG
+// (the converter is only downloaded the first time a HEIC photo is added).
 const isHeic = (f) => /hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || '')
-const isImage = (f) => f && !isHeic(f) && (f.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(f.name || ''))
+const isImage = (f) => f && (isHeic(f) || f.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(f.name || ''))
 const ymd = (d) => {
   const z = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
@@ -30,6 +31,26 @@ export async function readPhotoMeta(file, fallbackDate = null) {
   return { file, lat, lng, date: when ? ymd(when) : null, time: when ? when.getTime() : null }
 }
 
+const jpgName = (name) => (name || 'photo').replace(/\.\w+$/, '') + '.jpg'
+
+function bitmapToJpeg(bmp, name, lastModified, maxSide) {
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
+  const c = document.createElement('canvas')
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height)
+  bmp.close?.()
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.86))
+    .then(blob => blob && new File([blob], jpgName(name), { type: 'image/jpeg', lastModified }))
+}
+
+async function heicToJpeg(file, maxSide = 2560) {
+  const { heicTo } = await import('heic-to')
+  const bmp = await heicTo({ blob: file, type: 'bitmap' })
+  const out = await bitmapToJpeg(bmp, file.name, file.lastModified, maxSide)
+  if (!out) throw new Error('could not convert ' + file.name)
+  return out
+}
+
 // Big phone photos are scaled down (long side 2560px) so uploads stay quick; small ones are kept as is.
 export async function shrinkPhoto(file, maxSide = 2560, minBytes = 1_500_000) {
   if (file.size < minBytes || !/jpe?g|png|webp/i.test(file.type || file.name)) return file
@@ -42,8 +63,24 @@ export async function shrinkPhoto(file, maxSide = 2560, minBytes = 1_500_000) {
     bmp.close?.()
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.86))
     if (!blob || blob.size >= file.size) return file
-    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: file.lastModified })
+    return new File([blob], jpgName(file.name), { type: 'image/jpeg', lastModified: file.lastModified })
   } catch { return file }
+}
+
+// Make any picked photo ready to upload: HEIC → JPEG, big photos scaled down. Returns null if unusable.
+export async function preparePhoto(file) {
+  if (!isImage(file)) return null
+  if (isHeic(file)) {
+    try { return await heicToJpeg(file) } catch { return null }
+  }
+  return shrinkPhoto(file)
+}
+
+// files → { files: [ready File], skipped }
+export async function preparePhotos(files) {
+  const list = Array.from(files || [])
+  const out = (await Promise.all(list.map(preparePhoto))).filter(Boolean)
+  return { files: out, skipped: list.length - out.length }
 }
 
 // files → { groups: [{ lat, lng, date, photos: [File] }], noGps: [{ file, date }], skipped }
@@ -53,10 +90,12 @@ export async function importPhotos(files, { fallbackDates = new Map(), onProgres
   let done = 0
   const metas = await Promise.all(list.map(async f => {
     const m = await readPhotoMeta(f, fallbackDates.get(f) || null)
-    m.file = await shrinkPhoto(f)
+    m.file = await preparePhoto(f)
     onProgress?.(++done, list.length)
     return m
   }))
+  const failed = metas.filter(m => !m.file).length
+  for (let i = metas.length - 1; i >= 0; i--) if (!metas[i].file) metas.splice(i, 1)
   metas.sort((a, b) => (a.time ?? 0) - (b.time ?? 0))
 
   const groups = []
@@ -74,7 +113,7 @@ export async function importPhotos(files, { fallbackDates = new Map(), onProgres
       groups.push({ lat: m.lat, lng: m.lng, date: m.date, photos: [m.file] })
     }
   }
-  return { groups, noGps, skipped: all.length - list.length }
+  return { groups, noGps, skipped: all.length - list.length + failed }
 }
 
-export const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif'
+export const IMAGE_ACCEPT = 'image/*,.heic,.heif'
