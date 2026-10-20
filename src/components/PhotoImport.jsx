@@ -82,7 +82,12 @@ export function ImportStatus({ status, onCancel, onDismiss }) {
       <div className={`flex items-center gap-2 text-xs px-3.5 py-2 rounded-full border shadow-md ${status.error ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-stone-50/95 border-stone-200 text-stone-700'}`}>
         {status.busy && <Loader2 size={13} className="animate-spin flex-shrink-0 text-stone-400" />}
         <span className="truncate">{status.text}</span>
-        {status.action && (
+        {status.action?.href && (
+          <a href={status.action.href} target="_blank" rel="noopener" className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-stone-50" style={{ background: '#352f28' }}>
+            {status.action.label}
+          </a>
+        )}
+        {status.action?.run && (
           <button onClick={status.action.run} className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-stone-50" style={{ background: '#352f28' }}>
             {status.action.label}
           </button>

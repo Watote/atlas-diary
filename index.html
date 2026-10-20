@@ -9,6 +9,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <script>
+      // Google Photos sign-in (full-page redirect) comes back with #access_token=… — keep the token
+      // for this tab and take it out of the URL before the app (and Supabase) start.
+      (function () {
+        var h = location.hash
+        if (h.indexOf('state=gp_') < 0) return
+        var p = new URLSearchParams(h.slice(1))
+        try {
+          var ok = p.get('state') === sessionStorage.getItem('gp:state')
+          if (ok && p.get('access_token')) {
+            sessionStorage.setItem('gp:token', JSON.stringify({ token: p.get('access_token'), exp: Date.now() + (Number(p.get('expires_in')) || 3000) * 1000 }))
+            sessionStorage.setItem('gp:resume', 'ok')
+          } else if (ok) {
+            sessionStorage.setItem('gp:resume', 'error')
+          }
+          sessionStorage.removeItem('gp:state')
+        } catch (e) {}
+        history.replaceState(null, '', location.pathname + location.search)
+      })()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

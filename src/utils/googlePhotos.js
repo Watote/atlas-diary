@@ -23,7 +23,13 @@ function loadGis() {
   return gisPromise
 }
 
-let cachedToken = null // { token, exp }
+const ss = {
+  get: (k) => { try { return sessionStorage.getItem(k) } catch { return null } },
+  set: (k, v) => { try { sessionStorage.setItem(k, v) } catch {} },
+  del: (k) => { try { sessionStorage.removeItem(k) } catch {} },
+}
+let cachedToken = (() => { try { return JSON.parse(ss.get('gp:token')) } catch { return null } })() // { token, exp }
+const saveToken = (t) => { cachedToken = t; ss.set('gp:token', JSON.stringify(t)) }
 let tokenClient = null
 let pending = null      // { resolve, reject } for the sign-in in progress
 
@@ -41,7 +47,7 @@ export function prepareGoogle() {
       callback: (resp) => {
         const p = pending; pending = null
         if (resp.error || !resp.access_token) return p?.reject(fail(resp.error_description || resp.error || 'Google sign-in was cancelled', resp.error))
-        cachedToken = { token: resp.access_token, exp: Date.now() + (Number(resp.expires_in) || 3000) * 1000 }
+        saveToken({ token: resp.access_token, exp: Date.now() + (Number(resp.expires_in) || 3000) * 1000 })
         p?.resolve(resp.access_token)
       },
       error_callback: (err) => {
@@ -52,6 +58,27 @@ export function prepareGoogle() {
       },
     })
   })
+}
+
+export const hasToken = () => !!(cachedToken && cachedToken.exp > Date.now() + 60_000)
+
+// Sign in by sending the whole page to Google and back — works even when the browser or an
+// extension blocks pop-ups. index.html stores the returned token; takeSignInResult() reads it.
+export function signInWithRedirect() {
+  const state = 'gp_' + Math.random().toString(36).slice(2)
+  ss.set('gp:state', state)
+  const q = new URLSearchParams({
+    client_id: GOOGLE_OAUTH_CLIENT_ID,
+    redirect_uri: location.origin + '/',
+    response_type: 'token',
+    scope: SCOPE,
+    include_granted_scopes: 'true',
+    state,
+  })
+  location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + q)
+}
+export function takeSignInResult() {
+  const r = ss.get('gp:resume'); ss.del('gp:resume'); return r
 }
 
 // Must be called synchronously from a click handler.

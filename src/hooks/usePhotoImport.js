@@ -2,7 +2,7 @@
 // photos without a location wait in a tray until the user taps the map or searches a place.
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { importPhotos } from '../utils/photoImport.js'
-import { startPicking, openPicker, finishPicking, prepareGoogle } from '../utils/googlePhotos.js'
+import { startPicking, openPicker, finishPicking, prepareGoogle, hasToken, signInWithRedirect, takeSignInResult } from '../utils/googlePhotos.js'
 import { MAX_PHOTOS } from '../constants/limits.js'
 
 let trayId = 0
@@ -97,7 +97,11 @@ export function usePhotoImport() {
   const runGoogle = useCallback(async (ctx, win) => {
     cancelRef.current = false
     let closedAt = 0
-    setStatus({ text: 'pick photos in the Google Photos window…', busy: true, cancel: true })
+    // pop-ups blocked → offer a normal link to the picker instead (links still open in a new tab)
+    const link = win ? null : ctx.session.pickerUri + '/autoclose'
+    setStatus(link
+      ? { text: 'pick your photos in Google Photos', busy: true, cancel: true, action: { label: 'open Google Photos', href: link } }
+      : { text: 'pick photos in the Google Photos window…', busy: true, cancel: true })
     try {
       const { files, dates } = await finishPicking(ctx, {
         onStatus: (t) => setStatus({ text: t, busy: true, cancel: true }),
@@ -116,34 +120,47 @@ export function usePhotoImport() {
     }
   }, [addFiles, flash])
 
+  const toRedirect = useCallback(() => {
+    try { localStorage.setItem('atlas:gp-redirect', '1') } catch {}
+    setStatus({ text: 'taking you to Google sign-in…', busy: true })
+    signInWithRedirect()
+  }, [])
+
+  // after signing in: make a picking session and send the user to the picker
+  const continuePicking = useCallback(async () => {
+    setStatus({ text: 'connecting to Google Photos…', busy: true })
+    const ctx = await startPicking()
+    runGoogle(ctx, openPicker(ctx.session))
+  }, [runGoogle])
+
   const pickGoogle = useCallback(async () => {
     clearTimeout(hideTimer.current)
+    let popupsBlocked = false
+    try { popupsBlocked = localStorage.getItem('atlas:gp-redirect') === '1' } catch {}
+    if (!hasToken() && popupsBlocked) return toRedirect()
     try {
       const pick = startPicking()   // opens the sign-in pop-up right away, inside this click
       setStatus({ text: 'connecting to Google Photos…', busy: true })
       const ctx = await pick
-      const win = openPicker(ctx.session)
-      if (win) return runGoogle(ctx, win)
-      // the sign-in pop-up used up this click; ask for one more
-      setStatus({
-        text: 'signed in to Google Photos',
-        action: { label: 'choose photos', run: () => runGoogle(ctx, openPicker(ctx.session)) },
-      })
+      runGoogle(ctx, openPicker(ctx.session))
     } catch (e) {
       if (e.code === 'cancelled' || e.code === 'popup_closed') return setStatus(null)
-      if (e.code === 'not_ready' || e.code === 'popup_blocked') {
-        return setStatus({
-          text: e.code === 'not_ready' ? 'Google Photos is getting ready' : 'pop-up was blocked — allow pop-ups for this site, then',
-          error: e.code === 'popup_blocked',
-          action: { label: 'sign in to Google', run: () => pickGoogle() },
-        })
+      if (e.code === 'popup_blocked') return toRedirect()   // sign in on Google's page instead
+      if (e.code === 'not_ready') {
+        return setStatus({ text: 'Google Photos is getting ready', action: { label: 'try again', run: () => pickGoogle() } })
       }
       flash({ text: e.message || 'Google Photos is not available', error: true }, 9000)
     }
-  }, [runGoogle, flash])
+  }, [runGoogle, flash, toRedirect])
 
-  // load Google sign-in early so the first click can open its pop-up
-  useEffect(() => { prepareGoogle().catch(() => {}) }, [])
+  useEffect(() => {
+    // load Google sign-in early so the first click can open its pop-up
+    prepareGoogle().catch(() => {})
+    // back from Google's sign-in page?
+    const r = takeSignInResult()
+    if (r === 'ok') continuePicking().catch(e => flash({ text: e.message || 'Google Photos is not available', error: true }, 9000))
+    else if (r === 'error') flash({ text: 'Google sign-in was cancelled' })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelStatus = useCallback(() => { cancelRef.current = true; setStatus(null) }, [])
 
