@@ -154,16 +154,34 @@ export function useEntries(userId) {
     }
   }, [userId])
 
-  // Get signed URLs for photos (Supabase Storage private bucket needs signed URLs)
+  // Get signed URLs for photos (Supabase Storage private bucket needs signed URLs).
+  // One batched request instead of one request per photo.
   const getPhotoUrls = useCallback(async (entryId, count) => {
-    const urls = []
-    for (let i = 0; i < count; i++) {
-      const path = `${userId}/${entryId}-${i}`
-      const { data } = await supabase.storage.from('photos').createSignedUrl(path, 3600)
-      if (data?.signedUrl) urls.push(data.signedUrl)
-    }
-    return urls
+    if (!count) return []
+    const paths = Array.from({ length: count }, (_, i) => `${userId}/${entryId}-${i}`)
+    const { data, error } = await supabase.storage.from('photos').createSignedUrls(paths, 3600)
+    if (error) { console.error('Photo URL error:', error); return [] }
+    return (data || []).map(d => d.signedUrl).filter(Boolean)
   }, [userId])
+
+  // Cover photo (first photo) for every entry that has photos → { [entryId]: url }.
+  // Used for the photo pins and the trip player. Refreshed when entries change.
+  const [coverUrls, setCoverUrls] = useState({})
+  useEffect(() => {
+    if (!userId) return
+    const withPhotos = entries.filter(e => e.photoCount > 0)
+    if (!withPhotos.length) { setCoverUrls({}); return }
+    let cancelled = false
+    const paths = withPhotos.map(e => `${userId}/${e.id}-0`)
+    supabase.storage.from('photos').createSignedUrls(paths, 3600).then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { console.error('Cover URL error:', error); return }
+      const map = {}
+      ;(data || []).forEach((d, i) => { if (d.signedUrl) map[withPhotos[i].id] = d.signedUrl })
+      setCoverUrls(map)
+    })
+    return () => { cancelled = true }
+  }, [userId, entries.map(e => `${e.id}:${e.photoCount}`).join(',')])
 
   const exportJSON = useCallback(() => {
     const data = JSON.stringify(entries, null, 2)
@@ -196,7 +214,7 @@ export function useEntries(userId) {
   return {
     entries, loading,
     addEntry, deleteEntry, updateEntry,
-    uploadPhotos, getPhotoUrls,
+    uploadPhotos, getPhotoUrls, coverUrls,
     exportJSON, importJSON,
   }
 }

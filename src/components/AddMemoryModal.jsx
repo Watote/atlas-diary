@@ -1,9 +1,9 @@
+import { MAX_PHOTOS } from '../constants/limits.js'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Upload, MapPin, Globe, Mountain, Pipette } from 'lucide-react'
 import { MOODS, CUSTOM_MOOD_IDX, WEATHER_OPTIONS, COMPANION_OPTIONS } from '../utils/moods.js'
 import { reverseGeocode, getElevation } from '../utils/geocode.js'
 
-const MAX_PHOTOS = 3
 
 export default function AddMemoryModal({ coords, onSave, onClose, prefillLocation }) {
   const [location, setLocation] = useState(prefillLocation || '')

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, ChevronLeft, ChevronRight, Pencil, Check, Upload, Globe, Mountain, Star, Pipette } from 'lucide-react'
 import { getMoodFromEntry, MOODS, CUSTOM_MOOD_IDX, WEATHER_OPTIONS, COMPANION_OPTIONS } from '../utils/moods.js'
+import { MAX_PHOTOS } from '../constants/limits.js'
+import StreetViewMini from './StreetViewMini.jsx'
 
-const MAX_PHOTOS = 3
-
-export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhotoUrls, uploadPhotos }) {
+export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhotoUrls, uploadPhotos, siblings = [], onNavigate = () => {}, isMobile = false }) {
+  const [lightbox, setLightbox] = useState(false)
   const [photoUrls, setPhotoUrls] = useState([])
   const [photoIdx, setPhotoIdx] = useState(0)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
@@ -34,8 +35,11 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
     ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : ''
 
+  // Leave edit mode and reset the gallery when switching to another memory
+  useEffect(() => { setEditing(false); setLightbox(false); setPhotoIdx(0) }, [entry.id])
+
   useEffect(() => {
-    if (entry.photoCount === 0) return
+    if (entry.photoCount === 0) { setPhotoUrls([]); return }
     setLoadingPhotos(true)
     getPhotoUrls(entry.id, entry.photoCount).then(urls => {
       revokeRef.current = []
@@ -94,62 +98,116 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
   const weatherObj = WEATHER_OPTIONS.find(w => w.value === entry.weather)
   const companionObj = COMPANION_OPTIONS.find(c => c.value === entry.companions)
 
+  // ── photo gallery helpers ──
+  const n = photoUrls.length
+  const prevPhoto = () => setPhotoIdx(i => (i - 1 + n) % n)
+  const nextPhoto = () => setPhotoIdx(i => (i + 1) % n)
+  const touchX = useRef(null)
+  const onTouchStart = (e) => { touchX.current = e.touches[0].clientX }
+  const onTouchEnd = (e) => {
+    if (touchX.current == null || n < 2) return
+    const dx = e.changedTouches[0].clientX - touchX.current
+    if (Math.abs(dx) > 40) (dx < 0 ? nextPhoto : prevPhoto)()
+    touchX.current = null
+  }
+
+  // ── older / newer memory (date order, same filters as the sidebar) ──
+  const pos = siblings.findIndex(s => s.id === entry.id)
+  const older = pos > 0 ? siblings[pos - 1] : null
+  const newer = pos >= 0 && pos < siblings.length - 1 ? siblings[pos + 1] : null
+
+  // Keyboard: ←/→ photos, Esc closes (lightbox first)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (editing || e.target.closest?.('input, textarea')) return
+      if (e.key === 'Escape') { lightbox ? setLightbox(false) : onClose() }
+      else if (e.key === 'ArrowRight' && n > 1) nextPhoto()
+      else if (e.key === 'ArrowLeft' && n > 1) prevPhoto()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing, lightbox, n, onClose])
+
+  const hasPhotos = entry.photoCount > 0
+  const title = entry.englishName && entry.nativeName && entry.nativeName !== entry.englishName ? entry.englishName : entry.location
+
+  const gallery = hasPhotos && (
+    <div className="relative bg-stone-900 overflow-hidden select-none"
+      style={{ height: isMobile ? '46vh' : '100%', minHeight: isMobile ? 0 : 420 }}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {/* blurred backdrop so portrait and landscape photos both fill the frame */}
+      {n > 0 && (
+        <img src={photoUrls[photoIdx]} alt="" aria-hidden
+          className="absolute inset-0 w-full h-full object-cover scale-110"
+          style={{ filter: 'blur(24px) brightness(0.6)' }} />
+      )}
+      {loadingPhotos && n === 0 ? (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-stone-400">loading photos...</div>
+      ) : n > 0 ? (
+        <>
+          <img key={photoUrls[photoIdx]} src={photoUrls[photoIdx]} alt=""
+            onClick={() => setLightbox(true)}
+            className="relative w-full h-full object-contain cursor-zoom-in"
+            style={{ animation: 'tripIn 0.25s ease' }} />
+          {n > 1 && (
+            <>
+              <button onClick={prevPhoto} aria-label="previous photo"
+                className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 hover:bg-black/60 transition-colors">
+                <ChevronLeft size={16} />
+              </button>
+              <button onClick={nextPhoto} aria-label="next photo"
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 hover:bg-black/60 transition-colors">
+                <ChevronRight size={16} />
+              </button>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 max-w-[90%] overflow-x-auto p-1">
+                {photoUrls.map((u, i) => (
+                  <button key={u} onClick={() => setPhotoIdx(i)} aria-label={`photo ${i + 1}`}
+                    className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 transition-all"
+                    style={{ outline: i === photoIdx ? '2px solid white' : 'none', opacity: i === photoIdx ? 1 : 0.6 }}>
+                    <img src={u} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <span className="absolute top-3 left-3 text-[10px] text-white/90 bg-black/40 rounded-full px-2 py-0.5"
+            style={{ fontFamily: 'DM Mono, monospace' }}>{photoIdx + 1} / {n}</span>
+        </>
+      ) : null}
+    </div>
+  )
+
   return (
-    <div className="absolute inset-0 z-[1000] flex items-center justify-center p-4"
-      style={{ background: 'rgba(26,22,18,0.4)' }}
+    <div className={`absolute inset-0 z-[1000] flex items-center justify-center ${isMobile ? '' : 'p-6'}`}
+      style={{ background: 'rgba(26,22,18,0.45)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-stone-50 rounded-xl border border-stone-200 w-full max-w-sm shadow-xl overflow-hidden">
-
-        {/* Mood color bar */}
-        <div style={{ height: 5, background: editing ? editMoodColor : mood.color, transition: 'background 0.2s' }} />
-
-        {/* Photo gallery */}
-        {entry.photoCount > 0 && (
-          <div className="relative bg-stone-200 overflow-hidden" style={{ height: 200 }}>
-            {loadingPhotos ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-stone-400">loading photos...</div>
-            ) : photoUrls.length > 0 ? (
-              <>
-                <img src={photoUrls[photoIdx]} alt="" className="w-full h-full object-cover" />
-                {photoUrls.length > 1 && (
-                  <>
-                    <button onClick={() => setPhotoIdx(i => (i - 1 + photoUrls.length) % photoUrls.length)}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1 hover:bg-black/60 transition-colors">
-                      <ChevronLeft size={14} />
-                    </button>
-                    <button onClick={() => setPhotoIdx(i => (i + 1) % photoUrls.length)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1 hover:bg-black/60 transition-colors">
-                      <ChevronRight size={14} />
-                    </button>
-                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                      {photoUrls.map((_, i) => (
-                        <button key={i} onClick={() => setPhotoIdx(i)}
-                          className="w-1.5 h-1.5 rounded-full transition-colors"
-                          style={{ background: i === photoIdx ? 'white' : 'rgba(255,255,255,0.4)' }} />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            ) : null}
-          </div>
+      <div
+        className={`bg-stone-50 shadow-2xl overflow-hidden flex ${isMobile ? 'flex-col w-full h-full' : 'rounded-2xl border border-stone-200 w-full max-h-[88vh]'}`}
+        style={{ maxWidth: isMobile ? '100%' : (hasPhotos ? 880 : 460), animation: 'cardIn 0.3s ease' }}
+      >
+        {/* Photos (left on desktop, top on mobile) */}
+        {hasPhotos && (
+          <div className={isMobile ? 'flex-shrink-0' : 'w-[52%] flex-shrink-0'}>{gallery}</div>
         )}
 
-        {/* Header buttons */}
-        <div className="absolute top-3 right-3 flex gap-1.5 z-10">
-          {!editing && (
-            <button onClick={startEdit} className="bg-stone-50/90 rounded-full p-1.5 text-stone-400 hover:text-stone-700 transition-colors" title="edit">
-              <Pencil size={14} />
-            </button>
-          )}
-          <button onClick={editing ? cancelEdit : onClose} className="bg-stone-50/90 rounded-full p-1.5 text-stone-400 hover:text-stone-700 transition-colors">
-            <X size={14} />
-          </button>
-        </div>
+        {/* Diary page */}
+        <div className="relative flex-1 min-w-0 flex flex-col">
+          <div style={{ height: 5, background: editing ? editMoodColor : mood.color, transition: 'background 0.2s', flexShrink: 0 }} />
 
-        {/* Body */}
-        <div className="px-5 py-4 max-h-[75vh] overflow-y-auto">
+          {/* Header buttons */}
+          <div className="absolute top-4 right-3 flex gap-1.5 z-10">
+            {!editing && (
+              <button onClick={startEdit} className="bg-stone-50/90 rounded-full p-1.5 text-stone-400 hover:text-stone-700 transition-colors" title="edit">
+                <Pencil size={14} />
+              </button>
+            )}
+            <button onClick={editing ? cancelEdit : onClose} className="bg-stone-50/90 rounded-full p-1.5 text-stone-400 hover:text-stone-700 transition-colors" title="close">
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="px-6 py-5 overflow-y-auto flex-1">
           {editing ? (
             <div className="space-y-3 pt-1">
               {/* Location */}
@@ -273,39 +331,39 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
             </div>
           ) : (
             <>
+              {/* date line */}
+              <p className="text-[11px] tracking-widest uppercase text-stone-400 mb-1 pr-16">{dateStr}</p>
+
               {/* Location title */}
-              <h2 style={{ fontFamily: 'Playfair Display, serif', fontWeight: 400, fontSize: 20, marginBottom: 4, paddingRight: 56 }}>
-                {entry.englishName && entry.nativeName && entry.nativeName !== entry.englishName ? entry.englishName : entry.location}
+              <h2 style={{ fontFamily: 'Playfair Display, serif', fontWeight: 400, fontSize: 28, lineHeight: 1.15, marginBottom: 4, paddingRight: 56 }}>
+                {title}
               </h2>
               {entry.nativeName && entry.nativeName !== entry.englishName && (
                 <p className="text-sm text-stone-400 mb-1" style={{ fontFamily: 'serif' }}>{entry.nativeName}</p>
               )}
 
               {/* Meta row */}
-              <div className="flex items-center gap-3 mb-3 flex-wrap">
-                <p className="text-xs text-stone-400">{dateStr}</p>
-                {entry.elevation != null && (
-                  <span className="flex items-center gap-1 text-xs text-stone-400"><Mountain size={10} />{entry.elevation.toLocaleString()}m</span>
-                )}
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
                 {entry.country && (
-                  <span className="flex items-center gap-1 text-xs text-stone-400"><Globe size={10} />{entry.country}</span>
+                  <span className="flex items-center gap-1 text-xs text-stone-500"><Globe size={11} />{entry.country}</span>
+                )}
+                {entry.elevation != null && (
+                  <span className="flex items-center gap-1 text-xs text-stone-500"><Mountain size={11} />{entry.elevation.toLocaleString()}m</span>
+                )}
+                {entry.rating > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <span key={s} style={{ color: s <= entry.rating ? '#d4a843' : '#d6d3cd', fontSize: 15 }}>★</span>
+                    ))}
+                  </span>
                 )}
               </div>
 
-              {/* Rating */}
-              {entry.rating > 0 && (
-                <div className="flex items-center gap-0.5 mb-3">
-                  {[1,2,3,4,5].map(s => (
-                    <span key={s} style={{ color: s <= entry.rating ? '#d4a843' : '#d6d3cd', fontSize: 16 }}>★</span>
-                  ))}
-                </div>
-              )}
-
-              {/* Note */}
+              {/* Note — the diary text */}
               {entry.note && (
-                <p className="text-sm text-stone-600 leading-relaxed mb-3"
-                  style={{ fontFamily: 'Playfair Display, serif', fontStyle: 'italic' }}>
-                  "{entry.note}"
+                <p className="text-stone-700 leading-relaxed mb-4 pl-3"
+                  style={{ fontFamily: 'Playfair Display, serif', fontStyle: 'italic', fontSize: 16, borderLeft: `3px solid ${mood.color}` }}>
+                  {entry.note}
                 </p>
               )}
 
@@ -326,7 +384,7 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
                     {companionObj.emoji} {companionObj.label}
                   </span>
                 )}
-                {entry.photoCount > 0 && (
+                {hasPhotos && (
                   <span className="text-xs px-2.5 py-1 rounded-full bg-stone-100 text-stone-500">
                     {entry.photoCount} photo{entry.photoCount !== 1 ? 's' : ''}
                   </span>
@@ -335,7 +393,7 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
 
               {/* Tags */}
               {entry.tags?.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-3">
+                <div className="flex flex-wrap gap-1 mb-4">
                   {entry.tags.map(tag => (
                     <span key={tag} className="text-xs px-2 py-0.5 rounded-full border border-stone-200 text-stone-500"
                       style={{ fontFamily: 'DM Mono, monospace' }}>
@@ -344,6 +402,11 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
                   ))}
                 </div>
               )}
+
+              {/* Street View of the spot */}
+              <div className="mb-4">
+                <StreetViewMini lat={entry.lat} lng={entry.lng} />
+              </div>
 
               {/* Actions */}
               <div className="flex gap-3 border-t border-stone-100 pt-3">
@@ -360,8 +423,40 @@ export default function DetailCard({ entry, onClose, onDelete, onUpdate, getPhot
               </div>
             </>
           )}
+          </div>
+
+          {/* Older / newer memory */}
+          {!editing && (older || newer) && (
+            <div className="flex items-center justify-between border-t border-stone-200 px-4 py-2.5 flex-shrink-0 gap-2"
+              style={{ fontFamily: 'DM Mono, monospace', paddingBottom: isMobile ? 'max(10px, env(safe-area-inset-bottom))' : undefined }}>
+              <button disabled={!older} onClick={() => older && onNavigate(older.id)}
+                className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-800 disabled:opacity-30 min-w-0">
+                <ChevronLeft size={14} className="flex-shrink-0" /><span className="truncate">{older ? (older.englishName || older.location) : 'older'}</span>
+              </button>
+              <span className="text-[10px] text-stone-400 flex-shrink-0">{pos + 1} / {siblings.length}</span>
+              <button disabled={!newer} onClick={() => newer && onNavigate(newer.id)}
+                className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-800 disabled:opacity-30 min-w-0 justify-end">
+                <span className="truncate">{newer ? (newer.englishName || newer.location) : 'newer'}</span><ChevronRight size={14} className="flex-shrink-0" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Full-screen photo */}
+      {lightbox && n > 0 && (
+        <div className="fixed inset-0 z-[1100] bg-black/95 flex items-center justify-center"
+          onClick={() => setLightbox(false)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <img src={photoUrls[photoIdx]} alt="" className="max-w-[96vw] max-h-[92vh] object-contain" onClick={e => e.stopPropagation()} />
+          <button onClick={() => setLightbox(false)} className="absolute top-4 right-4 text-white/80 hover:text-white p-2" aria-label="close photo"><X size={20} /></button>
+          {n > 1 && (
+            <>
+              <button onClick={e => { e.stopPropagation(); prevPhoto() }} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2" aria-label="previous photo"><ChevronLeft size={28} /></button>
+              <button onClick={e => { e.stopPropagation(); nextPhoto() }} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2" aria-label="next photo"><ChevronRight size={28} /></button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

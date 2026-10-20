@@ -8,9 +8,11 @@ import DetailCard from './components/DetailCard.jsx'
 import StatsView from './components/StatsView.jsx'
 import SearchBar from './components/SearchBar.jsx'
 import AuthScreen from './components/AuthScreen.jsx'
+import TripPlayer from './components/TripPlayer.jsx'
 import { useEntries } from './hooks/useEntries.js'
 import { useIsMobile } from './hooks/useIsMobile.js'
-import { Search, Plus, X } from 'lucide-react'
+import { Search, Plus, X, Route, Play } from 'lucide-react'
+import { useMemo } from 'react'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -39,7 +41,7 @@ function AtlasDiary({ userId, userEmail }) {
   const {
     entries, loading,
     addEntry, deleteEntry, updateEntry,
-    uploadPhotos, getPhotoUrls,
+    uploadPhotos, getPhotoUrls, coverUrls,
     exportJSON, importJSON,
   } = useEntries(userId)
 
@@ -52,15 +54,34 @@ function AtlasDiary({ userId, userEmail }) {
   const [apiReady, setApiReady] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const mapRef = useRef(null)
+  const [showJourney, setShowJourney] = useState(() => {
+    try { return localStorage.getItem('atlas:journey') !== 'off' } catch { return true }
+  })
+  const [tripOn, setTripOn] = useState(false)
+  const [tripProgress, setTripProgress] = useState(null)
+  const [tripStops, setTripStops] = useState([])   // frozen at trip start
+
+  // Memories in date order (respecting the sidebar filters) — used by the journey line and trip player
+  const journeyStops = useMemo(() => entries
+    .filter(e => e.date && (filteredIds === null || filteredIds.has(e.id)))
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || '').localeCompare(b.createdAt || ''))),
+  [entries, filteredIds])
+  const journeyPath = useMemo(() => journeyStops.map(e => ({ lat: e.lat, lng: e.lng })), [journeyStops])
+
+  const toggleJourney = () => setShowJourney(v => {
+    try { localStorage.setItem('atlas:journey', v ? 'off' : 'on') } catch {}
+    return !v
+  })
 
   const handleMapReady = useCallback((map) => { mapRef.current = map }, [])
   const handleApiLoaded = useCallback(() => setApiReady(true), [])
 
   const handleMapClick = useCallback((lat, lng) => {
-    if (pendingCoords || activeEntryId || showStats) return
+    if (pendingCoords || activeEntryId || showStats || tripOn) return
     setPrefillLocation('')
     setPendingCoords({ lat, lng })
-  }, [pendingCoords, activeEntryId, showStats])
+  }, [pendingCoords, activeEntryId, showStats, tripOn])
 
   const handlePinClick = useCallback((id) => {
     setActiveEntryId(id); setPendingCoords(null)
@@ -84,7 +105,14 @@ function AtlasDiary({ userId, userEmail }) {
     setActiveEntryId(id)
   }, [entries])
 
+  const startTrip = useCallback(() => {
+    setPendingCoords(null); setActiveEntryId(null); setShowStats(false)
+    setTripStops(journeyStops); setTripProgress(0); setTripOn(true)
+  }, [journeyStops])
+  const stopTrip = useCallback(() => { setTripOn(false); setTripProgress(null) }, [])
+
   const closeAll = useCallback(() => {
+    setTripOn(false); setTripProgress(null)
     setPendingCoords(null); setActiveEntryId(null)
     setShowStats(false); setPrefillLocation('')
     setMobileSearchOpen(false)
@@ -183,7 +211,7 @@ function AtlasDiary({ userId, userEmail }) {
         <div className="flex-1 relative">
 
           {/* Map hint */}
-          {!pendingCoords && !activeEntry && !showStats && (
+          {!pendingCoords && !activeEntry && !showStats && !tripOn && (
             <div
               className="absolute left-1/2 -translate-x-1/2 z-10 text-xs text-stone-500 bg-stone-50/90 px-4 py-1.5 rounded-full border border-stone-200 pointer-events-none whitespace-nowrap"
               style={{
@@ -202,10 +230,42 @@ function AtlasDiary({ userId, userEmail }) {
             onPinClick={handlePinClick}
             onMapReady={handleMapReady}
             onApiLoaded={handleApiLoaded}
+            coverUrls={coverUrls}
+            activeId={tripOn ? tripStops[tripProgress ?? 0]?.id : activeEntryId}
+            journeyPath={tripOn ? tripStops.map(e => ({ lat: e.lat, lng: e.lng })) : journeyPath}
+            showJourney={showJourney}
+            journeyProgress={tripOn ? tripProgress : null}
           />
 
+          {/* Journey controls — top right of the map */}
+          {journeyStops.length >= 2 && !tripOn && !pendingCoords && !activeEntry && !showStats && (
+            <div className="absolute top-3 right-3 z-10 flex gap-1.5" style={{ fontFamily: 'DM Mono, monospace' }}>
+              <button onClick={toggleJourney} title="show the route between memories"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border shadow-sm transition-colors"
+                style={{ background: showJourney ? '#352f28' : 'rgba(250,250,249,0.95)', color: showJourney ? '#f5f0ea' : '#6b6058', borderColor: showJourney ? '#352f28' : '#e7e5e4' }}>
+                <Route size={13} /> journey
+              </button>
+              <button onClick={startTrip} title="fly through your memories in date order"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-stone-200 bg-stone-50/95 text-stone-700 shadow-sm hover:bg-white transition-colors">
+                <Play size={13} /> play trip
+              </button>
+            </div>
+          )}
+
+          {tripOn && tripStops.length > 0 && (
+            <TripPlayer
+              stops={tripStops}
+              mapRef={mapRef}
+              coverUrls={coverUrls}
+              isMobile={isMobile}
+              onProgress={setTripProgress}
+              onOpen={(id) => setActiveEntryId(id)}
+              onClose={stopTrip}
+            />
+          )}
+
           {/* Mobile: floating + button — bottom LEFT */}
-          {isMobile && !pendingCoords && !activeEntry && !showStats && (
+          {isMobile && !pendingCoords && !activeEntry && !showStats && !tripOn && (
             <button
               onClick={() => { closeAll(); setPendingCoords({ lat: 20, lng: 10 }) }}
               style={{
@@ -246,6 +306,10 @@ function AtlasDiary({ userId, userEmail }) {
           {activeEntry && (
             <DetailCard
               entry={activeEntry}
+              coverUrl={coverUrls[activeEntry.id]}
+              siblings={journeyStops}
+              onNavigate={(id) => handleSelectEntry(id)}
+              isMobile={isMobile}
               onClose={() => setActiveEntryId(null)}
               onDelete={handleDeleteEntry}
               onUpdate={updateEntry}
