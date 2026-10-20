@@ -5,14 +5,14 @@ import { MOODS, CUSTOM_MOOD_IDX, WEATHER_OPTIONS, COMPANION_OPTIONS } from '../u
 import { reverseGeocode, getElevation } from '../utils/geocode.js'
 
 
-export default function AddMemoryModal({ coords, onSave, onClose, prefillLocation }) {
+export default function AddMemoryModal({ coords, onSave, onClose, prefillLocation, prefillDate, prefillPhotos, sourceNote, onSkip }) {
   const [location, setLocation] = useState(prefillLocation || '')
   const [nativeName, setNativeName] = useState('')
   const [englishName, setEnglishName] = useState('')
   const [country, setCountry] = useState('')
   const [elevation, setElevation] = useState(null)
   const [geocoding, setGeocoding] = useState(false)
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(prefillDate || new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
 
   // Mood — preset index or CUSTOM_MOOD_IDX
@@ -27,8 +27,8 @@ export default function AddMemoryModal({ coords, onSave, onClose, prefillLocatio
   const [rating, setRating] = useState(0)
   const [tags, setTags] = useState('')
 
-  const [photos, setPhotos] = useState([])
-  const [previews, setPreviews] = useState([])
+  const [photos, setPhotos] = useState(() => (prefillPhotos || []).slice(0, MAX_PHOTOS))
+  const [previews, setPreviews] = useState(() => (prefillPhotos || []).slice(0, MAX_PHOTOS).map(f => URL.createObjectURL(f)))
   const [dragging, setDragging] = useState(false)
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef()
@@ -111,8 +111,22 @@ export default function AddMemoryModal({ coords, onSave, onClose, prefillLocatio
 
         {/* Header */}
         <div className="px-6 pt-4 pb-4 border-b border-stone-200 flex items-center justify-between">
-          <h2 style={{ fontFamily: 'Playfair Display, serif', fontWeight: 400, fontSize: 18 }}>new memory</h2>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 transition-colors"><X size={18} /></button>
+          <div className="min-w-0">
+            <h2 style={{ fontFamily: 'Playfair Display, serif', fontWeight: 400, fontSize: 18 }}>new memory</h2>
+            {sourceNote && (
+              <p className="text-[11px] text-stone-400 mt-0.5 truncate" style={{ fontFamily: 'DM Mono, monospace' }}>{sourceNote}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {onSkip && (
+              <button onClick={onSkip}
+                className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-full px-2.5 py-1 transition-colors"
+                style={{ fontFamily: 'DM Mono, monospace' }}>
+                skip
+              </button>
+            )}
+            <button onClick={onClose} aria-label="close" className="text-stone-400 hover:text-stone-700 transition-colors"><X size={18} /></button>
+          </div>
         </div>
 
         <div className="px-6 py-4 space-y-4 max-h-[75vh] overflow-y-auto">

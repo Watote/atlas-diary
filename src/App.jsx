@@ -9,6 +9,8 @@ import StatsView from './components/StatsView.jsx'
 import SearchBar from './components/SearchBar.jsx'
 import AuthScreen from './components/AuthScreen.jsx'
 import TripPlayer from './components/TripPlayer.jsx'
+import { AddPhotosButton, DropOverlay, ImportStatus, PhotoTray } from './components/PhotoImport.jsx'
+import { usePhotoImport } from './hooks/usePhotoImport.js'
 import { useEntries } from './hooks/useEntries.js'
 import { useIsMobile } from './hooks/useIsMobile.js'
 import { Search, Plus, X, Route, Play } from 'lucide-react'
@@ -60,6 +62,25 @@ function AtlasDiary({ userId, userEmail }) {
   const [tripOn, setTripOn] = useState(false)
   const [tripProgress, setTripProgress] = useState(null)
   const [tripStops, setTripStops] = useState([])   // frozen at trip start
+  const imp = usePhotoImport()
+  const [pendingDraft, setPendingDraft] = useState(null) // tray photos going into the open modal
+
+  // the tray's selected photos ride along with the next map click / place search
+  const trayDraft = useCallback(() => {
+    const sel = imp.traySelected
+    if (!sel.length) return null
+    const dates = sel.map(t => t.date).filter(Boolean).sort()
+    return { ids: sel.map(t => t.id), photos: sel.map(t => t.file), date: dates[0] || null }
+  }, [imp.traySelected])
+
+  // show where an imported memory is while its form is open
+  const head = imp.queueHead
+  useEffect(() => {
+    const map = mapRef.current
+    if (!head || !map) return
+    map.panTo({ lat: head.lat, lng: head.lng })
+    if ((map.getZoom() ?? 0) < 11) map.setZoom(11)
+  }, [head])
 
   // Memories in date order (respecting the sidebar filters) — used by the journey line and trip player
   const journeyStops = useMemo(() => entries
@@ -78,19 +99,28 @@ function AtlasDiary({ userId, userEmail }) {
   const handleApiLoaded = useCallback(() => setApiReady(true), [])
 
   const handleMapClick = useCallback((lat, lng) => {
-    if (pendingCoords || activeEntryId || showStats || tripOn) return
+    if (pendingCoords || activeEntryId || showStats || tripOn || head) return
     setPrefillLocation('')
+    setPendingDraft(trayDraft())
     setPendingCoords({ lat, lng })
-  }, [pendingCoords, activeEntryId, showStats, tripOn])
+  }, [pendingCoords, activeEntryId, showStats, tripOn, head, trayDraft])
 
   const handlePinClick = useCallback((id) => {
     setActiveEntryId(id); setPendingCoords(null)
   }, [])
 
   const handleSaveEntry = useCallback(async (data) => {
+    const saved = await addEntry(data)
+    if (saved && pendingDraft) imp.removeTray(pendingDraft.ids)
+    setPendingCoords(null); setPrefillLocation(''); setPendingDraft(null)
+  }, [addEntry, pendingDraft, imp.removeTray])
+
+  const handleSaveQueued = useCallback(async (data) => {
     await addEntry(data)
-    setPendingCoords(null); setPrefillLocation('')
-  }, [addEntry])
+    imp.popQueue()
+  }, [addEntry, imp.popQueue])
+
+  const closeModal = useCallback(() => { setPendingCoords(null); setPrefillLocation(''); setPendingDraft(null) }, [])
 
   const handleDeleteEntry = useCallback(async (id) => {
     await deleteEntry(id); setActiveEntryId(null)
@@ -113,20 +143,22 @@ function AtlasDiary({ userId, userEmail }) {
 
   const closeAll = useCallback(() => {
     setTripOn(false); setTripProgress(null)
-    setPendingCoords(null); setActiveEntryId(null)
+    setPendingCoords(null); setActiveEntryId(null); setPendingDraft(null)
     setShowStats(false); setPrefillLocation('')
     setMobileSearchOpen(false)
   }, [])
 
   const handlePlaceSelected = useCallback(({ lat, lng, label }) => {
     closeAll(); setPrefillLocation(label || '')
+    setPendingDraft(trayDraft())
     setPendingCoords({ lat, lng })
     setMobileSearchOpen(false)
-  }, [closeAll])
+  }, [closeAll, trayDraft])
 
   const handleSignOut = async () => { await supabase.auth.signOut() }
 
   const activeEntry = entries.find(e => e.id === activeEntryId) || null
+  const mapIsFree = !pendingCoords && !head && !activeEntry && !showStats && !tripOn
 
   const sidebarProps = {
     entries, activeId: activeEntryId,
@@ -175,6 +207,7 @@ function AtlasDiary({ userId, userEmail }) {
                 className="text-xs px-3 py-1.5 border border-stone-300 rounded-lg text-stone-600 hover:bg-stone-100 transition-colors">
                 + add
               </button>
+              <AddPhotosButton onFiles={imp.addFiles} onGoogle={imp.pickGoogle} />
             </>
           )}
 
@@ -208,10 +241,13 @@ function AtlasDiary({ userId, userEmail }) {
 
       {/* ── Main content ── */}
       <div className="flex flex-1 overflow-hidden relative">
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" {...(mapIsFree ? imp.dropHandlers : {})}>
+
+          <DropOverlay show={imp.dragging && mapIsFree} />
+          <ImportStatus status={imp.status} onCancel={imp.cancelStatus} onDismiss={imp.dismissStatus} />
 
           {/* Map hint */}
-          {!pendingCoords && !activeEntry && !showStats && !tripOn && (
+          {mapIsFree && !imp.tray.length && (
             <div
               className="absolute left-1/2 -translate-x-1/2 z-10 text-xs text-stone-500 bg-stone-50/90 px-4 py-1.5 rounded-full border border-stone-200 pointer-events-none whitespace-nowrap"
               style={{
@@ -219,7 +255,7 @@ function AtlasDiary({ userId, userEmail }) {
                 bottom: isMobile ? 'calc(90px + max(env(safe-area-inset-bottom), 34px))' : '1rem',
               }}
             >
-              {isMobile ? 'tap the map to drop a memory' : 'click anywhere on the map · or search above'}
+              {isMobile ? 'tap the map to drop a memory' : 'click the map · search above · or drop photos here'}
             </div>
           )}
 
@@ -239,7 +275,7 @@ function AtlasDiary({ userId, userEmail }) {
           />
 
           {/* Journey controls — top right of the map */}
-          {journeyStops.length >= 2 && !tripOn && !pendingCoords && !activeEntry && !showStats && (
+          {journeyStops.length >= 2 && mapIsFree && (
             <div className="absolute top-3 right-3 z-10 flex gap-1.5" style={{ fontFamily: 'DM Mono, monospace' }}>
               <button onClick={toggleJourney} title="show the route between memories"
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border shadow-sm transition-colors"
@@ -266,8 +302,14 @@ function AtlasDiary({ userId, userEmail }) {
             />
           )}
 
+          {/* Mobile: photos button above the + button */}
+          {isMobile && mapIsFree && (
+            <AddPhotosButton mobile onFiles={imp.addFiles} onGoogle={imp.pickGoogle}
+              style={{ position: 'absolute', left: 18, zIndex: 40, bottom: 'calc(74px + max(env(safe-area-inset-bottom), 34px))' }} />
+          )}
+
           {/* Mobile: floating + button — bottom LEFT */}
-          {isMobile && !pendingCoords && !activeEntry && !showStats && !tripOn && (
+          {isMobile && mapIsFree && (
             <button
               onClick={() => { closeAll(); setPendingCoords({ lat: 20, lng: 10 }) }}
               style={{
@@ -295,13 +337,33 @@ function AtlasDiary({ userId, userEmail }) {
             <FloatingPanel {...sidebarProps} />
           )}
 
+          {/* Photos waiting for a place */}
+          {mapIsFree && (
+            <PhotoTray tray={imp.tray} selected={imp.traySelected} onToggle={imp.toggleTray} onClear={imp.clearTray} isMobile={isMobile} />
+          )}
+
           {/* Overlays */}
-          {pendingCoords && (
+          {head ? (
             <AddMemoryModal
+              key={`q${imp.queueTotal}-${imp.queuePos}`}
+              coords={{ lat: head.lat, lng: head.lng }}
+              prefillDate={head.date}
+              prefillPhotos={head.photos}
+              sourceNote={`from your photos${imp.queueTotal > 1 ? ` · ${imp.queuePos} of ${imp.queueTotal}` : ''}`}
+              onSkip={imp.queueTotal > 1 ? imp.popQueue : undefined}
+              onSave={handleSaveQueued}
+              onClose={imp.clearQueue}
+            />
+          ) : pendingCoords && (
+            <AddMemoryModal
+              key={pendingDraft ? `t${pendingDraft.ids.join('-')}` : 'm'}
               coords={pendingCoords}
               prefillLocation={prefillLocation}
+              prefillDate={pendingDraft?.date}
+              prefillPhotos={pendingDraft?.photos}
+              sourceNote={pendingDraft ? `${pendingDraft.photos.length} ${pendingDraft.photos.length === 1 ? 'photo' : 'photos'} from your tray` : undefined}
               onSave={handleSaveEntry}
-              onClose={() => { setPendingCoords(null); setPrefillLocation('') }}
+              onClose={closeModal}
             />
           )}
 
