@@ -24,21 +24,47 @@ function loadGis() {
 }
 
 let cachedToken = null // { token, exp }
-async function getToken() {
-  if (cachedToken && cachedToken.exp > Date.now() + 60_000) return cachedToken.token
-  await loadGis()
-  return new Promise((resolve, reject) => {
-    const client = window.google.accounts.oauth2.initTokenClient({
+let tokenClient = null
+let pending = null      // { resolve, reject } for the sign-in in progress
+
+const fail = (message, code) => Object.assign(new Error(message), { code })
+
+// Load Google sign-in ahead of time. Browsers only allow the sign-in pop-up when it opens
+// straight from a click, so nothing slow may happen between the click and requestAccessToken().
+export function prepareGoogle() {
+  if (!GOOGLE_OAUTH_CLIENT_ID) return Promise.resolve()
+  return loadGis().then(() => {
+    if (tokenClient) return
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_OAUTH_CLIENT_ID,
       scope: SCOPE,
       callback: (resp) => {
-        if (resp.error || !resp.access_token) return reject(new Error(resp.error_description || resp.error || 'Google sign-in was cancelled'))
+        const p = pending; pending = null
+        if (resp.error || !resp.access_token) return p?.reject(fail(resp.error_description || resp.error || 'Google sign-in was cancelled', resp.error))
         cachedToken = { token: resp.access_token, exp: Date.now() + (Number(resp.expires_in) || 3000) * 1000 }
-        resolve(resp.access_token)
+        p?.resolve(resp.access_token)
       },
-      error_callback: (err) => reject(new Error(err?.message || 'Google sign-in was cancelled')),
+      error_callback: (err) => {
+        const p = pending; pending = null
+        if (err?.type === 'popup_failed_to_open') return p?.reject(fail('the browser blocked the Google sign-in pop-up', 'popup_blocked'))
+        if (err?.type === 'popup_closed') return p?.reject(fail('Google sign-in was closed', 'popup_closed'))
+        p?.reject(fail(err?.message || 'Google sign-in failed', err?.type))
+      },
     })
-    client.requestAccessToken({ prompt: cachedToken ? '' : 'consent' })
+  })
+}
+
+// Must be called synchronously from a click handler.
+function getToken() {
+  if (cachedToken && cachedToken.exp > Date.now() + 60_000) return Promise.resolve(cachedToken.token)
+  if (!tokenClient) {
+    prepareGoogle().catch(() => {})
+    return Promise.reject(fail('Google sign-in is still loading', 'not_ready'))
+  }
+  return new Promise((resolve, reject) => {
+    pending?.reject(fail('cancelled', 'cancelled'))
+    pending = { resolve, reject }
+    tokenClient.requestAccessToken({ prompt: '' })
   })
 }
 
@@ -51,6 +77,7 @@ async function api(path, token, opts = {}) {
 const secs = (d) => (parseFloat(String(d || '').replace('s', '')) || 0) * 1000
 
 // Step 1 (on a click): sign in if needed and create a picking session → { token, session }
+// (getToken runs before the first await, so the pop-up still counts as part of the click)
 export async function startPicking({ maxItems = 30 } = {}) {
   const token = await getToken()
   const session = await api('/sessions', token, { method: 'POST', body: JSON.stringify({ pickingConfig: { maxItemCount: String(maxItems) } }) })

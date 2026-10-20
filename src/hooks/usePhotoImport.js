@@ -2,7 +2,7 @@
 // photos without a location wait in a tray until the user taps the map or searches a place.
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { importPhotos } from '../utils/photoImport.js'
-import { startPicking, openPicker, finishPicking } from '../utils/googlePhotos.js'
+import { startPicking, openPicker, finishPicking, prepareGoogle } from '../utils/googlePhotos.js'
 import { MAX_PHOTOS } from '../constants/limits.js'
 
 let trayId = 0
@@ -118,9 +118,10 @@ export function usePhotoImport() {
 
   const pickGoogle = useCallback(async () => {
     clearTimeout(hideTimer.current)
-    setStatus({ text: 'connecting to Google Photos…', busy: true })
     try {
-      const ctx = await startPicking()
+      const pick = startPicking()   // opens the sign-in pop-up right away, inside this click
+      setStatus({ text: 'connecting to Google Photos…', busy: true })
+      const ctx = await pick
       const win = openPicker(ctx.session)
       if (win) return runGoogle(ctx, win)
       // the sign-in pop-up used up this click; ask for one more
@@ -129,9 +130,20 @@ export function usePhotoImport() {
         action: { label: 'choose photos', run: () => runGoogle(ctx, openPicker(ctx.session)) },
       })
     } catch (e) {
+      if (e.code === 'cancelled' || e.code === 'popup_closed') return setStatus(null)
+      if (e.code === 'not_ready' || e.code === 'popup_blocked') {
+        return setStatus({
+          text: e.code === 'not_ready' ? 'Google Photos is getting ready' : 'pop-up was blocked — allow pop-ups for this site, then',
+          error: e.code === 'popup_blocked',
+          action: { label: 'sign in to Google', run: () => pickGoogle() },
+        })
+      }
       flash({ text: e.message || 'Google Photos is not available', error: true }, 9000)
     }
   }, [runGoogle, flash])
+
+  // load Google sign-in early so the first click can open its pop-up
+  useEffect(() => { prepareGoogle().catch(() => {}) }, [])
 
   const cancelStatus = useCallback(() => { cancelRef.current = true; setStatus(null) }, [])
 
